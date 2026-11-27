@@ -20,7 +20,8 @@ const esc = s => String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&g
 
 let view="today", tab="list", sel=TODAY;
 let selGo=TODAY, curGo=(()=>{const t=parse(TODAY);return {y:t.y,m:t.m};})();  // 行く予定のカレンダー
-let mapSpan="month", mapCity="";  // 地図: 期間と選んだ都市
+let mapSpan="month", mapCity="";
+const MAP_Z=[1,1.6,2.4,3.4,4.6]; let mapZ=0, mapScroll=null;  // 地図だけの拡大（ボタンと2本指で）  // 地図: 期間と選んだ都市
 let fmode="all", pick=new Set();  // 表示するグループ: all=すべて / oshi=推しだけ / pick=選んだグループ
 try{ pick=new Set(JSON.parse(localStorage.getItem("pick")||"[]")); }catch(e){}
 const ZOOMS=[1,1.3,1.6,2]; let zi=0; try{ zi=Math.min(ZOOMS.length-1,Math.max(0,+(localStorage.getItem("zoom")||0))); }catch(e){}
@@ -68,7 +69,7 @@ function monthCal(y,m,nav,evsIn,kind){
 }
 function renderMain(){
   const main=document.getElementById("main");
-  if(view==="map"){ main.innerHTML=renderMap(); }
+  if(view==="map"){ main.innerHTML=renderMap(); const sc=document.getElementById("mscroll"); scaleMarks(); if(sc&&mapScroll){ sc.scrollLeft=mapScroll[0]; sc.scrollTop=mapScroll[1]; } if(sc) sc.addEventListener("scroll",()=>{ mapScroll=[sc.scrollLeft,sc.scrollTop]; },{passive:true}); }
   else if(view==="today"){ main.innerHTML=dayBlocks(between(TODAY,TODAY)); }
   else if(view==="week"){ main.innerHTML=dayBlocks(between(TODAY,addDays(TODAY,6))); }
   else {
@@ -191,19 +192,55 @@ function mapPool(){
   const hi = mapSpan==="week"?addDays(TODAY,6):mapSpan==="month"?addDays(TODAY,30):"9999-12-31";
   return pool().filter(e=>e.d>=TODAY&&e.d<=hi);
 }
+function zoomMap(z, cx, cy){
+  z=Math.max(0,Math.min(MAP_Z.length-1,z)); const sc=document.getElementById("mscroll"); if(!sc){ mapZ=z; return; }
+  const old=MAP_Z[mapZ], nw=MAP_Z[z];
+  const px=(cx??sc.clientWidth/2), py=(cy??sc.clientHeight/2);
+  const fx=(sc.scrollLeft+px)/old, fy=(sc.scrollTop+py)/old;   // 拡大の中心を保つ
+  mapZ=z; sc.style.setProperty("--mz",nw); scaleMarks();
+  sc.scrollLeft=fx*nw-px; sc.scrollTop=fy*nw-py; mapScroll=[sc.scrollLeft,sc.scrollTop];
+}
+// 拡大しても丸と文字は大きくしない（重なっていた都市が離れて見えるように）
+function scaleMarks(){
+  const k=1/Math.sqrt(MAP_Z[mapZ]);
+  document.querySelectorAll("#mscroll g.mdot").forEach(g=>{
+    const x=+g.dataset.x, y=+g.dataset.y, r=(+g.dataset.r)*k;
+    const c=g.querySelector("circle"), n=g.querySelector("text.n"), l=g.querySelector("text.l");
+    c.setAttribute("r",r.toFixed(1)); c.setAttribute("stroke-width",(2*k).toFixed(2));
+    n.style.fontSize=(10*k).toFixed(1)+"px"; n.setAttribute("y",(y+4*k).toFixed(1));
+    l.style.fontSize=(11*k).toFixed(1)+"px"; l.style.strokeWidth=(3*k).toFixed(2)+"px"; l.setAttribute("x",(x+r+3*k).toFixed(1)); l.setAttribute("y",(y+4*k).toFixed(1));
+  });
+}
+// 2本指で地図だけを拡大・縮小する（ページ全体は拡大しない）
+(function(){
+  let d0=0, z0=0;
+  const dist=t=>Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
+  document.addEventListener("touchstart",e=>{ if(e.touches.length===2&&e.target.closest&&e.target.closest("#mscroll")){ d0=dist(e.touches); z0=mapZ; } },{passive:true});
+  document.addEventListener("touchmove",e=>{
+    if(!d0||e.touches.length!==2) return; e.preventDefault();
+    const sc=document.getElementById("mscroll"); if(!sc) return;
+    const r=sc.getBoundingClientRect(), cx=(e.touches[0].clientX+e.touches[1].clientX)/2-r.left, cy=(e.touches[0].clientY+e.touches[1].clientY)/2-r.top;
+    const want=MAP_Z[z0]*dist(e.touches)/d0; let best=0;
+    MAP_Z.forEach((v,i)=>{ if(Math.abs(v-want)<Math.abs(MAP_Z[best]-want)) best=i; });
+    if(best!==mapZ) zoomMap(best,cx,cy);
+  },{passive:false});
+  document.addEventListener("touchend",e=>{ if(e.touches.length<2) d0=0; },{passive:true});
+  document.addEventListener("gesturestart",e=>{ if(e.target.closest&&e.target.closest("#mscroll")) e.preventDefault(); });
+})();
 function renderMap(){
   const evs=mapPool(); const by={};
   evs.forEach(e=>{ const c=e.c||"不明"; (by[c]=by[c]||[]).push(e); });
   const land=LAND.map(poly=>`<polygon class="land" points="${poly.map(p=>PX(p).join(",")).join(" ")}"/>`).join("");
   const dots=Object.keys(CITY_POS).filter(c=>c!=="那覇").sort((a,b)=>(by[b]||[]).length-(by[a]||[]).length).map(c=>{ const n=(by[c]||[]).length; if(!n) return "";
     const [x,y]=PX(CITY_POS[c]); const r=Math.min(18,7+Math.sqrt(n)*2.2);
-    return `<g class="mdot" data-city="${c}"><circle cx="${x}" cy="${y}" r="${r}" fill="${c===mapCity?'#9b3cf0':'#ff2aa0'}" fill-opacity=".85" stroke="#fff" stroke-width="2"/><text x="${x}" y="${(+y+4)}" text-anchor="middle" style="fill:#fff;stroke:none;font-size:10px">${n}</text><text x="${(+x+r+3)}" y="${(+y+4)}">${c}</text></g>`; }).join("");
+    return `<g class="mdot" data-city="${c}" data-x="${x}" data-y="${y}" data-r="${r}"><circle cx="${x}" cy="${y}" r="${r}" fill="${c===mapCity?'#9b3cf0':'#ff2aa0'}" fill-opacity=".85" stroke="#fff" stroke-width="2"/><text class="n" x="${x}" y="${(+y+4)}" text-anchor="middle" style="fill:#fff;stroke:none;font-size:10px">${n}</text><text class="l" x="${(+x+r+3)}" y="${(+y+4)}">${c}</text></g>`; }).join("");
   const naha=(by["那覇"]||[]).length;
   const inset=`<rect x="8" y="10" width="86" height="40" rx="8" fill="#fff" stroke="#b8c7d9"/><text x="14" y="26" style="font-size:10px">沖縄</text>${naha?`<g class="mdot" data-city="那覇"><circle cx="60" cy="35" r="9" fill="${mapCity==='那覇'?'#9b3cf0':'#ff2aa0'}" stroke="#fff" stroke-width="2"/><text x="60" y="39" text-anchor="middle" style="fill:#fff;stroke:none;font-size:10px">${naha}</text></g>`:""}`;
   const order=[...Object.keys(CITY_POS),"オンライン","不明"].filter(c=>by[c]);
   const list=mapCity?(by[mapCity]||[]):[];
   return `<div class="span">${[["week","1週間"],["month","1か月"],["all","すべて"]].map(([k,l])=>`<button type="button" class="chip ${mapSpan===k?'on':''}" data-ms="${k}">${l}</button>`).join("")}</div>
-   <div class="jmap"><svg viewBox="0 0 380 350" role="img" aria-label="日本地図（都市ごとの予定の数）">${land}${dots}${inset}</svg></div>
+   <div class="jmap"><div class="mzoom"><button type="button" data-mz="1" aria-label="地図を拡大">＋</button><button type="button" data-mz="-1" aria-label="地図を縮小">−</button><button type="button" class="rs" data-mz="0" aria-label="地図を元の大きさに">元に</button></div>
+   <div class="mscroll" id="mscroll" style="--mz:${MAP_Z[mapZ]}"><svg viewBox="0 0 380 350" role="img" aria-label="日本地図（都市ごとの予定の数）">${land}${dots}${inset}</svg></div></div>
    <p class="note" style="margin:0 0 6px">丸の数字はその都市の予定の数。丸か下のボタンをタップすると一覧が出ます。</p>
    <div class="cities">${order.map(c=>`<button type="button" class="${c===mapCity?'on':''}" data-city="${c}">${c==="不明"?"会場未定・不明":c}<b>${by[c].length}</b></button>`).join("")||'<span class="note">この期間の予定はありません</span>'}</div>
    ${mapCity?`<div class="daylist" id="citylist"><h3>${mapCity==="不明"?"会場未定・不明":mapCity}の予定（${list.length}件）</h3>${dayBlocks(list)}</div>`:""}`;
@@ -251,6 +288,7 @@ document.addEventListener("click", ev=>{
   const b=ev.target.closest("button"); if(!b){ if(ev.target.id==="bg") closeSheet(); if(ev.target.id==="popbg") closePop(false); return; }
   if(b.dataset.a==="popclose"){ closePop(true); return; }
   if(b.dataset.pop){ readIds.add(b.dataset.rid); saveRead(); updateDot(); closePop(false); openSheet(DATA.events[+b.dataset.i]); return; }
+  if(b.dataset.mz!==undefined){ zoomMap(b.dataset.mz==="0"?0:mapZ+Number(b.dataset.mz)); return; }
   if(b.dataset.ms){ mapSpan=b.dataset.ms; renderMain(); return; }
   if(b.dataset.city){ mapCity=b.dataset.city===mapCity?"":b.dataset.city; renderMain(); document.getElementById("citylist")?.scrollIntoView({behavior:"smooth",block:"start"}); return; }
   if(b.dataset.gd){ selGo=b.dataset.gd; renderMy(); return; }
