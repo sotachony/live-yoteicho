@@ -212,20 +212,27 @@ function scaleMarks(){
   });
 }
 // 2本指で地図だけを拡大・縮小する（ページ全体は拡大しない）
+// iPhoneのSafariは、指を置いた瞬間（touchstart）と、ジェスチャー（gesturestart/gesturechange）を
+// 止めないとページごと拡大するので、地図の上で始まった2本指の操作はすべて止めて、地図だけを拡大する
 (function(){
-  let d0=0, z0=0;
+  let d0=0, z0=0, inMap=false;
+  const onMap=t=>!!(t&&t.closest&&t.closest("#mscroll"));
   const dist=t=>Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
-  document.addEventListener("touchstart",e=>{ if(e.touches.length===2&&e.target.closest&&e.target.closest("#mscroll")){ d0=dist(e.touches); z0=mapZ; } },{passive:true});
+  document.addEventListener("touchstart",e=>{
+    if(e.touches.length>=2&&[...e.touches].some(t=>onMap(t.target))){ inMap=true; e.preventDefault(); d0=dist(e.touches); z0=mapZ; }
+  },{passive:false});
   document.addEventListener("touchmove",e=>{
-    if(!d0||e.touches.length!==2) return; e.preventDefault();
+    if(!inMap) return;
+    e.preventDefault();
+    if(e.touches.length!==2||!d0) return;
     const sc=document.getElementById("mscroll"); if(!sc) return;
     const r=sc.getBoundingClientRect(), cx=(e.touches[0].clientX+e.touches[1].clientX)/2-r.left, cy=(e.touches[0].clientY+e.touches[1].clientY)/2-r.top;
     const want=MAP_Z[z0]*dist(e.touches)/d0; let best=0;
     MAP_Z.forEach((v,i)=>{ if(Math.abs(v-want)<Math.abs(MAP_Z[best]-want)) best=i; });
     if(best!==mapZ) zoomMap(best,cx,cy);
   },{passive:false});
-  document.addEventListener("touchend",e=>{ if(e.touches.length<2) d0=0; },{passive:true});
-  document.addEventListener("gesturestart",e=>{ if(e.target.closest&&e.target.closest("#mscroll")) e.preventDefault(); });
+  document.addEventListener("touchend",e=>{ if(e.touches.length===0){ inMap=false; d0=0; } },{passive:true});
+  ["gesturestart","gesturechange","gestureend"].forEach(n=>document.addEventListener(n,e=>{ if(inMap||onMap(e.target)) e.preventDefault(); },{passive:false}));
 })();
 function renderMap(){
   const evs=mapPool(); const by={};

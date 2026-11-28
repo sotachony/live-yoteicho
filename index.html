@@ -108,8 +108,8 @@ nav{display:flex;gap:4px;align-items:center}nav button{width:52px;height:44px;bo
 .pop .ib{display:flex;gap:10px;align-items:flex-start;padding:12px 10px;border-radius:12px;margin-bottom:6px;background:#fff4fb!important;font-size:15px}
 .pop .ib .ic{font-size:22px}
 .jmap{background:#eaf6ff;border-radius:16px;margin:4px 0 10px;position:relative}
-.jmap .mscroll{overflow:auto;border-radius:16px;touch-action:pan-x pan-y;-webkit-overflow-scrolling:touch;max-height:70vh}
-.jmap svg{width:calc(100% * var(--mz,1));height:auto;display:block;padding:6px;box-sizing:border-box}
+.jmap .mscroll{overflow:auto;border-radius:16px;touch-action:pan-x pan-y;user-select:none;-webkit-user-select:none;-webkit-overflow-scrolling:touch;max-height:70vh}
+.jmap svg{touch-action:pan-x pan-y;width:calc(100% * var(--mz,1));height:auto;display:block;padding:6px;box-sizing:border-box}
 .jmap .mzoom{position:absolute;right:8px;top:8px;display:flex;flex-direction:column;gap:6px;z-index:2}
 .jmap .mzoom button{width:40px;height:40px;border-radius:12px;border:1px solid #d7e3f0;background:#fff;font-size:20px;font-weight:800;color:#333;box-shadow:0 2px 6px rgba(0,0,0,.12)}
 .jmap .mzoom button.rs{font-size:11px}
