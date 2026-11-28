@@ -254,6 +254,17 @@ function scaleMarks(){
   document.addEventListener("touchend",e=>{ if(e.touches.length===0){ inMap=false; d0=0; } },{passive:true});
   ["gesturestart","gesturechange","gestureend"].forEach(n=>document.addEventListener(n,e=>{ if(inMap||onMap(e.target)) e.preventDefault(); },{passive:false}));
 })();
+// 都市の予定を、日にちを選んで1日ずつ見る
+let mapDay="";
+function cityDays(list){
+  const days=[...new Set(list.map(e=>e.d))].sort();
+  if(!days.includes(mapDay)) mapDay=days[0]||"";
+  const cnt=d=>list.filter(e=>e.d===d).length;
+  const name=mapCity==="不明"?"会場未定・不明":mapCity;
+  return `<div class="daylist" id="citylist"><h3>${name}の予定（${days.length}日・${list.length}件）</h3>
+    <div class="mdays">${days.map(d=>`<button type="button" class="chip ${d===mapDay?'on':''}" data-md="${d}">${md(d)}(${WD[dow(d)]})<b>${cnt(d)}</b></button>`).join("")}</div>
+    ${mapDay?dayBlocks(list.filter(e=>e.d===mapDay)):""}</div>`;
+}
 function renderMap(){
   const evs=mapPool(); const by={};
   evs.forEach(e=>{ const c=e.c||"不明"; (by[c]=by[c]||[]).push(e); });
@@ -270,7 +281,7 @@ function renderMap(){
    <div class="mscroll" id="mscroll" style="--mz:${MAP_Z[mapZ]}"><svg viewBox="0 0 380 350" role="img" aria-label="日本地図（都市ごとの予定の数）">${land}${dots}${inset}</svg></div></div>
    <p class="note" style="margin:0 0 6px">丸の数字はその都市の予定の数。丸か下のボタンをタップすると一覧が出ます。</p>
    <div class="cities">${order.map(c=>`<button type="button" class="${c===mapCity?'on':''}" data-city="${c}">${c==="不明"?"会場未定・不明":c}<b>${by[c].length}</b></button>`).join("")||'<span class="note">この期間の予定はありません</span>'}</div>
-   ${mapCity?`<div class="daylist" id="citylist"><h3>${mapCity==="不明"?"会場未定・不明":mapCity}の予定（${list.length}件）</h3>${dayBlocks(list)}</div>`:""}`;
+   ${mapCity?cityDays(list):""}`;
 }
 
 /* ---------- 予定の名前が変わったとき（未確定→詳細）に、行く予定・注目の印を引き継ぐ ---------- */
@@ -383,13 +394,14 @@ function applyTheme(){
 
 // ボタンは1か所でまとめて受け取る（どの画面でも確実に反応するように）
 document.addEventListener("click", ev=>{
-  const dot=ev.target.closest&&ev.target.closest("g.mdot"); if(dot&&dot.tagName&&dot.tagName.toLowerCase()==="g"){ mapCity=dot.dataset.city===mapCity?"":dot.dataset.city; renderMain(); document.getElementById("citylist")?.scrollIntoView({behavior:"smooth",block:"start"}); return; }
+  const dot=ev.target.closest&&ev.target.closest("g.mdot"); if(dot&&dot.tagName&&dot.tagName.toLowerCase()==="g"){ mapDay=""; mapCity=dot.dataset.city===mapCity?"":dot.dataset.city; renderMain(); document.getElementById("citylist")?.scrollIntoView({behavior:"smooth",block:"start"}); return; }
   const b=ev.target.closest("button"); if(!b){ if(ev.target.id==="bg") closeSheet(); if(ev.target.id==="popbg") closePop(false); return; }
   if(b.dataset.a==="popclose"){ closePop(true); return; }
   if(b.dataset.pop){ readIds.add(b.dataset.rid); saveRead(); updateDot(); closePop(false); openSheet(DATA.events[+b.dataset.i]); return; }
   if(b.dataset.mz!==undefined){ zoomMap(b.dataset.mz==="0"?0:mapZ+Number(b.dataset.mz)); return; }
+  if(b.dataset.md){ mapDay=b.dataset.md; renderMain(); const el=document.querySelector(`[data-md="${mapDay}"]`); el&&el.scrollIntoView({block:"nearest",inline:"center"}); return; }
   if(b.dataset.ms){ mapSpan=b.dataset.ms; renderMain(); return; }
-  if(b.dataset.city){ mapCity=b.dataset.city===mapCity?"":b.dataset.city; renderMain(); document.getElementById("citylist")?.scrollIntoView({behavior:"smooth",block:"start"}); return; }
+  if(b.dataset.city){ mapDay=""; mapCity=b.dataset.city===mapCity?"":b.dataset.city; renderMain(); document.getElementById("citylist")?.scrollIntoView({behavior:"smooth",block:"start"}); return; }
   if(b.dataset.gd){ selGo=b.dataset.gd; renderMy(); return; }
   if(b.dataset.gmv){ let m=curGo.m+Number(b.dataset.gmv), y=curGo.y; if(m<1){m=12;y--;} if(m>12){m=1;y++;} curGo={y,m}; const t=parse(TODAY); selGo=(y===t.y&&m===t.m)?TODAY:fmt(y,m,1); renderMy(); return; }
   if(b.dataset.a==="bkcopy"){ const c=backupCode(); const box=document.getElementById("bkout"); if(box){ box.value=c; box.style.display="block"; }
